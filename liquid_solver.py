@@ -8,20 +8,12 @@ import pandas as pd
 from scipy.optimize import brentq
 
 verbose = False
-input_filename = 'input_data.csv'
+input_filename = 'input_data_petrolog.csv'
 output_filename = 'output_data.csv'
 eps = 0.1
 fugacity_delta = 0
 exp_T_flg = False
 exp_fug_flg=False
-#oxid_list_dict = {'Ford': 'SiO2 TiO2 Al2O3 FeO MnO MgO CaO Na2O K2O P2O5 Cr2O3'.split(),
-#                  'Roeder-Emslie': 'SiO2 TiO2 Al2O3 FeO MnO MgO CaO Na2O K2O P2O5 Cr2O3'.split(),
-#                  'Herzberg': 'SiO2 TiO2 Al2O3 FeO MnO MgO CaO Na2O K2O P2O5 Cr2O3'.split(),
-#                  'Beattie': 'SiO2 TiO2 Al2O3 FeO MnO MgO CaO Na2O K2O P2O5 Cr2O3'.split(),
-#                  'Toplis': 'SiO2 TiO2 Al2O3 FeO MnO MgO CaO Na2O K2O P2O5 Cr2O3'.split(),
-#                  'Putirka_AB': 'SiO2 TiO2 Al2O3 FeO MnO MgO CaO Na2O K2O P2O5 Cr2O3'.split(),
-#                  'Putirka_CD': 'SiO2 TiO2 Al2O3 FeO MnO MgO CaO Na2O K2O P2O5 Cr2O3'.split()
-#                  }
 
 options, remainder = getopt.getopt(sys.argv[1:], 'i:o:vt:f:', ['verbose', 'oxid=', 'oliv-melt=', 'tol=', 'fugacity=', 'fugacity-delta=', 'exp-temp=', 'exp-fug='])
 
@@ -182,15 +174,15 @@ for i, row in molec_data.iterrows():
                 oxid_const['D*X'] = np.array(oxid_const['D']) * np.array(row[[col + '_molec_proc' for col in
                                                           ['SiO2', 'TiO2', 'Al2O3', 'FeO', 'MgO', 'CaO', 'Na2O',  'K2O']]] * 100.0)
                 ferrum_frac= np.power(10.0, np.sum(oxid_const['D*X']) + a * fugacity + b / prev_T_K + c)
+                print ferrum_frac
                 if verbose:
                     print 'Fe_3+ / Fe_2+ = {}'.format(str(ferrum_frac))
-                full_oxid_w = oxid_w.copy()
-    #            full_oxid_w['Fe2O3'] = 79.85
-                full_liquid_info = row.copy()
-                old_FeO = full_liquid_info['FeO']
-                full_liquid_info['FeO'] = row['FeO'] * full_oxid_w['FeO'] / (ferrum_frac * full_oxid_w['Fe2O3'] + oxid_w['FeO'])
-                full_liquid_info['Fe2O3'] = old_FeO - full_liquid_info['FeO']
-                full_liquid_info = manipulate_liquid(full_liquid_info, full_oxid_w, oxidation_model, olivine_melt_model, True)
+                full_liquid_info = pd.Series({oxid: row[oxid + '_molec_proc'] for oxid in oxid_list})
+                full_liquid_info['FeO'] = full_liquid_info['FeO'] / (1.0 + ferrum_frac)
+                full_liquid_info['Fe2O3'] = full_liquid_info['FeO'] * ferrum_frac / 2
+                full_liquid_info = full_liquid_info / np.sum(full_liquid_info)
+                print 'final fractions'
+                print full_liquid_info
                 if verbose:
                     print 'final liquid fractions:'
                     print full_liquid_info
