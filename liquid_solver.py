@@ -8,7 +8,7 @@ import pandas as pd
 from scipy.optimize import brentq
 
 verbose = False
-input_filename = 'input_data_petrolog.csv'
+input_filename = 'input_data_4.csv'
 output_filename = 'output_data.csv'
 eps = 0.1
 fugacity_delta = 0
@@ -116,7 +116,7 @@ Mg_volume_list = []
 Fe_volume_list = []
 for i, row in molec_data.iterrows():
     # repeating 2 steps until convergence or current liquid
-    cur_T_K = 1520
+    cur_T_K = 1500
     prev_T_K = 2700
     if verbose:
         print 'liquid {}'.format(str(i))
@@ -174,12 +174,16 @@ for i, row in molec_data.iterrows():
                 oxid_const['D*X'] = np.array(oxid_const['D']) * np.array(row[[col + '_molec_proc' for col in
                                                           ['SiO2', 'TiO2', 'Al2O3', 'FeO', 'MgO', 'CaO', 'Na2O',  'K2O']]] * 100.0)
                 ferrum_frac= np.power(10.0, np.sum(oxid_const['D*X']) + a * fugacity + b / prev_T_K + c)
-                print ferrum_frac
                 if verbose:
                     print 'Fe_3+ / Fe_2+ = {}'.format(str(ferrum_frac))
                 full_liquid_info = pd.Series({oxid: row[oxid + '_molec_proc'] for oxid in oxid_list})
                 full_liquid_info['FeO'] = full_liquid_info['FeO'] / (1.0 + ferrum_frac)
                 full_liquid_info['Fe2O3'] = full_liquid_info['FeO'] * ferrum_frac / 2
+                if olivine_melt_model in ('Ford', 'Putirka_AB', 'Putirka_CD'):
+                    two_kat_list = ['Li2O', 'Na2O', 'Al2O3', 'P2O5', 'K2O', 'Sc2O3', 'V2O5', 'Cr2O3', 'As2O5', 'Nb2O3',
+                                    'Sb2O3', 'Fe2O3']
+                    two_kat_filtered_list = list(set(two_kat_list) & set(full_liquid_info.keys().tolist()))
+                    full_liquid_info[two_kat_filtered_list] = full_liquid_info[two_kat_filtered_list] * 2.0
                 full_liquid_info = full_liquid_info / np.sum(full_liquid_info)
                 print 'final fractions'
                 print full_liquid_info
@@ -218,6 +222,7 @@ for i, row in molec_data.iterrows():
                                 1, 3000, xtol=1e-16)
                 if verbose:
                     print 'new optimal T = {}'.format(str(cur_T_K))
+                print cur_T_K
             elif olivine_melt_model == 'Roeder-Emslie':
                 Mg_A, Mg_B = 3740.0, 1.87
                 Fe_A, Fe_B = 3911.0, 2.5
