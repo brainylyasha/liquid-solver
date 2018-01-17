@@ -8,7 +8,7 @@ import pandas as pd
 from scipy.optimize import brentq
 
 verbose = False
-input_filename = 'input_data_4.csv'
+input_filename = 'input_data.csv'
 output_filename = 'output_data.csv'
 eps = 0.1
 fugacity_delta = 0
@@ -40,12 +40,11 @@ for opt, arg in options:
     elif opt == '--exp-fug':
         exp_fug_flg = (int(arg) == 1)
 
-def manipulate_liquid(row, oxid_w, oxidation_model, olivine_melt_model, full_flag=False):
+def manipulate_liquid(row, oxid_w, oxidation_model, olivine_melt_model):
     # leaving required oxids
 #    oxid_list = oxid_list_dict[olivine_melt_model][:]
     oxid_list = oxid_w.index.values.tolist()
-    if not full_flag:
-        oxid_list.remove('Fe2O3')
+    oxid_list.remove('Fe2O3')
 
     row = row[oxid_list]
 
@@ -53,8 +52,7 @@ def manipulate_liquid(row, oxid_w, oxidation_model, olivine_melt_model, full_fla
     row = row / np.array(oxid_w[oxid_list])
 
     # some must be halfed
-    if ((not full_flag) and oxidation_model == 'Borisov-Shapkin') or \
-            (full_flag and olivine_melt_model in('Roeder-Emslie', 'Toplis')):
+    if oxidation_model in ('Borisov-Shapkin', 'Kilinc'):
         two_kat_list = ['Li2O', 'Na2O', 'Al2O3', 'P2O5', 'K2O', 'Sc2O3', 'V2O5', 'Cr2O3', 'As2O5', 'Nb2O3',
                             'Sb2O3', 'Fe2O3']
         two_kat_filtered_list = list(set(two_kat_list) & set(row.keys().tolist()))
@@ -116,174 +114,182 @@ Mg_volume_list = []
 Fe_volume_list = []
 for i, row in molec_data.iterrows():
     # repeating 2 steps until convergence or current liquid
-    cur_T_K = 1644.05
+    cur_T_K = 1673.15
     prev_T_K = 2700
     if verbose:
         print 'liquid {}'.format(str(i))
 
     iter = 0
     while np.abs(cur_T_K - prev_T_K) > eps:
-        if olivine_melt_model == 'Toplis':
-            prev_T_K = cur_T_K
-            full_liquid_info = manipulate_liquid(row, oxid_w, oxidation_model, olivine_melt_model)
-            if exp_T_flg:
-                cur_T_K = exp_T_list[i]
-            else:
-                cur_T_K = 1446 - 144 * full_liquid_info['SiO2'] - 50 * full_liquid_info['FeO'] + 1232 * full_liquid_info['MgO'] - 389.9 * full_liquid_info['CaO']
-            if exp_fug_flg:
-                fugacity = exp_fug_list[i]
-            else:
-                fugacity = compute_fugacity(cur_T_K, fugacity_delta)
-            Fe_frac = np.exp(0.2185 * fugacity * np.log(10) + 12670.0 / cur_T_K - 7.54 - 2.24 * full_liquid_info['Al2O3'] + 1.55 * full_liquid_info['FeO'] +
-                             2.96 * full_liquid_info['CaO'] + 8.42 * full_liquid_info['Na2O'] + 9.59 * full_liquid_info['K2O'])
-            old_FeO = full_liquid_info['FeO']
-            full_liquid_info['FeO'] = old_FeO / (1.0 + 2.0 * Fe_frac)
-            full_liquid_info['Fe2O3'] = old_FeO - full_liquid_info['FeO']
-            full_liquid_info = full_liquid_info * 100
-            if full_liquid_info['SiO2'] < 60:
-                coef = (46.0 / (100.0 - full_liquid_info['SiO2']) - 0.93) * (full_liquid_info['Na2O'] + full_liquid_info['K2O']) + (-533.0 / (100.0 - full_liquid_info['SiO2']) + 9.69)
-                full_liquid_info['SiO2'] = full_liquid_info['SiO2'] + coef * (full_liquid_info['Na2O'] + full_liquid_info['K2O'])
-            else:
-                full_liquid_info['SiO2'] = full_liquid_info['SiO2'] + (5.5 * np.exp(-0.13 * (full_liquid_info['Na2O'] + full_liquid_info['K2O'])) * (2.0 - 100.0 / (100.0 - full_liquid_info['SiO2'])) - 1) * \
-                                                                      (full_liquid_info['Na2O'] + full_liquid_info['K2O'])
-            Fe_volume = brentq(lambda x: (0.036 * full_liquid_info['SiO2'] - 0.22) * np.exp(-(6766 + 7.34 * cur_T_K) / (8.314 * cur_T_K) + 3000.0 * (3 * x - 1) / (8.314 * cur_T_K)) - \
-                               full_liquid_info['MgO'] * x / (full_liquid_info['FeO'] * (2.0 / 3 - x)), 0.0001, 2.0/3 - 0.0001, xtol=1e-16)
-            Mg_volume = 2.0 / 3 - Fe_volume
+        if verbose:
+            print 'iter {}'.format(iter)
+        iter += 1
+        # ferrum quantity computation
+        prev_T_K = cur_T_K
+        if verbose:
+            print 'current temperature is {}'.format(str(prev_T_K))
+        if exp_fug_flg:
+            fugacity = exp_fug_list[i]
         else:
-            if verbose:
-                print 'iter {}'.format(iter)
-            iter += 1
-            # ferrum quantity computation
-            prev_T_K = cur_T_K
-            if verbose:
-                print 'current temperature is {}'.format(str(prev_T_K))
-            if exp_fug_flg:
-                fugacity = exp_fug_list[i]
-            else:
-                fugacity = compute_fugacity(cur_T_K, fugacity_delta)
-            if verbose:
-                print 'fugacity = {}'.format(str(fugacity))
+            fugacity = compute_fugacity(cur_T_K, fugacity_delta)
+        if verbose:
+            print 'fugacity = {}'.format(str(fugacity))
 
-            if oxidation_model == 'Borisov-Shapkin':
-                a = 0.1735
-                b = 771.7
-                c = 1.914
-                oxid_const = pd.read_csv('ferrum_const.csv', sep = ';').T
-                oxid_const.columns = ['d', 'd1', 'd2']
-                oxid_const['D'] = oxid_const['d'] + oxid_const['d1'] / prev_T_K + fugacity * oxid_const['d2']
-                oxid_const['D*X'] = np.array(oxid_const['D']) * np.array(row[[col + '_molec_proc' for col in
-                                                          ['SiO2', 'TiO2', 'Al2O3', 'FeO', 'MgO', 'CaO', 'Na2O',  'K2O']]] * 100.0)
-                ferrum_frac= np.power(10.0, np.sum(oxid_const['D*X']) + a * fugacity + b / prev_T_K + c)
-                if verbose:
-                    print 'Fe_3+ / Fe_2+ = {}'.format(str(ferrum_frac))
-                full_liquid_info = pd.Series({oxid: row[oxid + '_molec_proc'] for oxid in oxid_list})
-                full_liquid_info['FeO'] = full_liquid_info['FeO'] / (1.0 + ferrum_frac)
-                full_liquid_info['Fe2O3'] = full_liquid_info['FeO'] * ferrum_frac / 2
-                if olivine_melt_model in ('Ford', 'Putirka_AB', 'Putirka_CD', 'Beattie'):
-                    two_kat_list = ['Li2O', 'Na2O', 'Al2O3', 'P2O5', 'K2O', 'Sc2O3', 'V2O5', 'Cr2O3', 'As2O5', 'Nb2O3',
-                                    'Sb2O3', 'Fe2O3']
-                    two_kat_filtered_list = list(set(two_kat_list) & set(full_liquid_info.keys().tolist()))
-                    full_liquid_info[two_kat_filtered_list] = full_liquid_info[two_kat_filtered_list] * 2.0
-                full_liquid_info = full_liquid_info / np.sum(full_liquid_info)
-                print 'final fractions'
+        if oxidation_model == 'Borisov-Shapkin':
+            a = 0.1735
+            b = 771.7
+            c = 1.914
+            oxid_const = pd.read_csv('ferrum_const.csv', sep = ';').T
+            oxid_const.columns = ['d', 'd1', 'd2']
+            oxid_const['D'] = oxid_const['d'] + oxid_const['d1'] / prev_T_K + fugacity * oxid_const['d2']
+            oxid_const['D*X'] = np.array(oxid_const['D']) * np.array(row[[col + '_molec_proc' for col in
+                                                      ['SiO2', 'TiO2', 'Al2O3', 'FeO', 'MgO', 'CaO', 'Na2O',  'K2O']]] * 100.0)
+            ferrum_frac= np.power(10.0, np.sum(oxid_const['D*X']) + a * fugacity + b / prev_T_K + c)
+            if verbose:
+                print 'Fe_3+ / Fe_2+ = {}'.format(str(ferrum_frac))
+            full_liquid_info = pd.Series({oxid: row[oxid + '_molec_proc'] for oxid in oxid_list})
+            full_liquid_info['FeO'] = full_liquid_info['FeO'] / (1.0 + ferrum_frac)
+            full_liquid_info['Fe2O3'] = full_liquid_info['FeO'] * ferrum_frac / 2
+            if olivine_melt_model in ('Ford', 'Putirka_AB', 'Putirka_CD', 'Beattie', 'Herzberg'):
+                two_kat_list = ['Li2O', 'Na2O', 'Al2O3', 'P2O5', 'K2O', 'Sc2O3', 'V2O5', 'Cr2O3', 'As2O5', 'Nb2O3',
+                                'Sb2O3', 'Fe2O3']
+                two_kat_filtered_list = list(set(two_kat_list) & set(full_liquid_info.keys().tolist()))
+                full_liquid_info[two_kat_filtered_list] = full_liquid_info[two_kat_filtered_list] * 2.0
+            full_liquid_info = full_liquid_info / np.sum(full_liquid_info)
+            if verbose:
+                print 'final liquid fractions:'
                 print full_liquid_info
-                if verbose:
-                    print 'final liquid fractions:'
-                    print full_liquid_info
-            else:
-                sys.exit('Error: oxidation model {} not supported'.format(oxidation_model))
 
-            # optimal temperature computation
-            if olivine_melt_model == 'Ford':
-                Fe_C_list = [-4.325, 6515.1, 0.035572, -0.94621, -0.19957, 1.4172, 0.64833, 0.18455, 0.51707, 3.2151, 1.1978]
-                Mg_C_list = [-2.2008, 4896.7, 0.013804, -1.4993, -1.2674, 2.2394, 4.3926, -1.5124, 0.2268, 2.4709, 4.5012]
-                # exp(Fe_K1 + Fe_K2 / t) + exp(Mg_K1 + Mg_K2 / T) = 2/3
-                # computing consts
+        elif oxidation_model == 'Kilinc':
+            full_liquid_info = pd.Series({oxid: row[oxid + '_molec_proc'] for oxid in oxid_list})
+            ferrum_frac = np.exp(0.2185 * fugacity * np.log(10.0) + 12670.0 / cur_T_K - 7.54 - 2.24 * full_liquid_info['Al2O3'] + \
+                                 1.55 * full_liquid_info['FeO'] + 2.96 * full_liquid_info['CaO'] + \
+                                 8.42 * full_liquid_info['Na2O'] + 9.59 * full_liquid_info['K2O'])
+            print ferrum_frac
+            full_liquid_info['FeO'] = full_liquid_info['FeO'] / (1.0 + 2.0 * ferrum_frac)
+            full_liquid_info['Fe2O3'] = full_liquid_info['FeO'] * ferrum_frac
+            if olivine_melt_model in ('Ford', 'Putirka_AB', 'Putirka_CD', 'Beattie', 'Herzberg'):
+                two_kat_list = ['Li2O', 'Na2O', 'Al2O3', 'P2O5', 'K2O', 'Sc2O3', 'V2O5', 'Cr2O3', 'As2O5', 'Nb2O3',
+                                'Sb2O3', 'Fe2O3']
+                two_kat_filtered_list = list(set(two_kat_list) & set(full_liquid_info.keys().tolist()))
+                full_liquid_info[two_kat_filtered_list] = full_liquid_info[two_kat_filtered_list] * 2.0
+            full_liquid_info = full_liquid_info / np.sum(full_liquid_info)
+        else:
+            sys.exit('Error: oxidation model {} not supported'.format(oxidation_model))
 
-                Fe_K1 = np.log(full_liquid_info['FeO']) + Fe_C_list[0] + Fe_C_list[3] * \
+        # optimal temperature computation
+        if olivine_melt_model == 'Ford':
+            Fe_C_list = [-4.325, 6515.1, 0.035572, -0.94621, -0.19957, 1.4172, 0.64833, 0.18455, 0.51707, 3.2151, 1.1978]
+            Mg_C_list = [-2.2008, 4896.7, 0.013804, -1.4993, -1.2674, 2.2394, 4.3926, -1.5124, 0.2268, 2.4709, 4.5012]
+            # exp(Fe_K1 + Fe_K2 / t) + exp(Mg_K1 + Mg_K2 / T) = 2/3
+            # computing consts
+
+            Fe_K1 = np.log(full_liquid_info['FeO']) + Fe_C_list[0] + Fe_C_list[3] * \
+            np.log(1.5 * (full_liquid_info['MgO'] + full_liquid_info['FeO'] + full_liquid_info['CaO'] + \
+                         full_liquid_info['MnO'] + full_liquid_info['Cr2O3'])) +\
+            Fe_C_list[4] * np.log(3 * full_liquid_info['SiO2'])  + Fe_C_list[5] * np.log(1 - full_liquid_info['Al2O3']) + \
+            Fe_C_list[6] * np.log(1 - full_liquid_info['Fe2O3']) + Fe_C_list[7] * np.log(1 - full_liquid_info['CaO']) + \
+            Fe_C_list[8] * np.log(1 - full_liquid_info['Na2O'] - full_liquid_info['K2O']) +\
+            Fe_C_list[9] * np.log(1 - full_liquid_info['TiO2']) + Fe_C_list[10] * np.log(1 - full_liquid_info['P2O5'])
+            Fe_K2 = Fe_C_list[1]
+
+            Mg_K1 = np.log(full_liquid_info['MgO']) + Mg_C_list[0] + Mg_C_list[3] * \
                 np.log(1.5 * (full_liquid_info['MgO'] + full_liquid_info['FeO'] + full_liquid_info['CaO'] + \
                              full_liquid_info['MnO'] + full_liquid_info['Cr2O3'])) +\
-                Fe_C_list[4] * np.log(3 * full_liquid_info['SiO2'])  + Fe_C_list[5] * np.log(1 - full_liquid_info['Al2O3']) + \
-                Fe_C_list[6] * np.log(1 - full_liquid_info['Fe2O3']) + Fe_C_list[7] * np.log(1 - full_liquid_info['CaO']) + \
-                Fe_C_list[8] * np.log(1 - full_liquid_info['Na2O'] - full_liquid_info['K2O']) +\
-                Fe_C_list[9] * np.log(1 - full_liquid_info['TiO2']) + Fe_C_list[10] * np.log(1 - full_liquid_info['P2O5'])
-                Fe_K2 = Fe_C_list[1]
-
-                Mg_K1 = np.log(full_liquid_info['MgO']) + Mg_C_list[0] + Mg_C_list[3] * \
-                np.log(1.5 * (full_liquid_info['MgO'] + full_liquid_info['FeO'] + full_liquid_info['CaO'] + \
-                             full_liquid_info['MnO'] + full_liquid_info['Cr2O3'])) +\
-                Mg_C_list[4] * np.log(3 * full_liquid_info['SiO2'])  + Mg_C_list[5] * np.log(1 - full_liquid_info['Al2O3']) + \
-                Mg_C_list[6] * np.log(1 - full_liquid_info['Fe2O3']) + Mg_C_list[7] * np.log(1 - full_liquid_info['CaO']) + \
+            Mg_C_list[4] * np.log(3 * full_liquid_info['SiO2'])  + Mg_C_list[5] * np.log(1 - full_liquid_info['Al2O3']) + \
+            Mg_C_list[6] * np.log(1 - full_liquid_info['Fe2O3']) + Mg_C_list[7] * np.log(1 - full_liquid_info['CaO']) + \
                 Mg_C_list[8] * np.log(1 - full_liquid_info['Na2O'] - full_liquid_info['K2O']) +\
                 Mg_C_list[9] * np.log(1 - full_liquid_info['TiO2']) + Mg_C_list[10] * np.log(1 - full_liquid_info['P2O5'])
-                Mg_K2 = Mg_C_list[1]
-                cur_T_K = brentq(lambda x: np.exp(Fe_K1 + Fe_K2 / x) +
+            Mg_K2 = Mg_C_list[1]
+            cur_T_K = brentq(lambda x: np.exp(Fe_K1 + Fe_K2 / x) +
                     np.exp(Mg_K1 + Mg_K2 / x) - 2.0 / 3,
                                 1, 3000, xtol=1e-16)
-                if verbose:
-                    print 'new optimal T = {}'.format(str(cur_T_K))
-                print cur_T_K
-            elif olivine_melt_model == 'Roeder-Emslie':
-                Mg_A, Mg_B = 3740.0, 1.87
-                Fe_A, Fe_B = 3911.0, 2.5
-                cur_T_K = brentq(lambda x: full_liquid_info['MgO'] * np.power(10.0, Mg_A / x - Mg_B) +
+            if verbose:
+                print 'new optimal T = {}'.format(str(cur_T_K))
+        elif olivine_melt_model == 'Roeder-Emslie':
+            Mg_A, Mg_B = 3740.0, 1.87
+            Fe_A, Fe_B = 3911.0, 2.5
+            cur_T_K = brentq(lambda x: full_liquid_info['MgO'] * np.power(10.0, Mg_A / x - Mg_B) +
                                             full_liquid_info['FeO'] * np.power(10.0, Fe_A / x - Fe_B) - 2.0 /3 , 1, 3000, xtol=1e-16)
-            elif olivine_melt_model == 'Herzberg':
-                A, B, C = 0.381, 0.79, 1.039
-                Fe_volume = 2.0 * (A * full_liquid_info['FeO'] - B * full_liquid_info['FeO'] / row['MgO'] + \
+        elif olivine_melt_model == 'Herzberg':
+            A, B, C = 0.381, 0.79, 1.039
+            Fe_volume = 2.0 * (A * full_liquid_info['FeO'] - B * full_liquid_info['FeO'] / row['MgO'] + \
                              C * full_liquid_info['FeO'] / (row['MgO'] * row['MgO'])) / \
                             (3.0 * (full_liquid_info['MgO'] + A * full_liquid_info['FeO'] - \
                                     B * full_liquid_info['FeO'] / row['MgO'] + C * full_liquid_info['FeO'] / (row['MgO'] * row['MgO'])))
-                Mg_volume = 2.0 / 3 - Fe_volume
-                H, S, R = 113100, 52.05, 8.314
-                NF = 7.0 * (np.log(1 - full_liquid_info['Al2O3']) / 2.0 + np.log(1 - full_liquid_info['TiO2']))
-                cur_T_K = (H / R) /(S / R + 2 * np.log(Mg_volume / full_liquid_info['MgO']) + \
+            Mg_volume = 2.0 / 3 - Fe_volume
+            H, S, R = 113100, 52.05, 8.314
+            NF = 7.0 * (np.log(1 - full_liquid_info['Al2O3']) / 2.0 + np.log(1 - full_liquid_info['TiO2']))
+            cur_T_K = (H / R) /(S / R + 2 * np.log(Mg_volume / full_liquid_info['MgO']) + \
                                     2 * np.log(3.0 * (full_liquid_info['FeO'] + full_liquid_info['MgO'] + \
                                                       full_liquid_info['MnO'] + full_liquid_info['CaO']) / 2) +\
                                     2 * np.log(3.0 * full_liquid_info['SiO2']) - NF)
-            elif olivine_melt_model == 'Beattie':
-                A_ol, B_ol = (np.array(full_liquid_info[['TiO2', 'Al2O3', 'Fe2O3', 'FeO', 'MnO', 'MgO', 'CaO', 'Na2O', 'K2O', 'Cr2O3']]) * \
-                np.array([[0, -0.022, 0, 0.299, 0.259, 1, 0.0056, 0, 0, 0.218],
+        elif olivine_melt_model == 'Beattie':
+            A_ol, B_ol = (np.array(full_liquid_info[['TiO2', 'Al2O3', 'Fe2O3', 'FeO', 'MnO', 'MgO', 'CaO', 'Na2O', 'K2O', 'Cr2O3']]) * \
+            np.array([[0, -0.022, 0, 0.299, 0.259, 1, 0.0056, 0, 0, 0.218],
                             [0.03, 0.055, 0.0001, 0.027, -0.049, 0, 0.0135, 0.0001, 0.0001, -0.024]])).sum(axis=1)
-                D_Mg = (2.0 / 3 - B_ol) / A_ol
-                print 'D_mg', D_Mg
-                NF = 7.0 * (np.log(1 - full_liquid_info['Al2O3']) / 2.0 + np.log(1 - full_liquid_info['TiO2']))
-                print 'NF', NF
-                H, S, R = 113100, 52.05, 8.314
-                cur_T_K = (H / R) / (S / R + 2 * np.log(D_Mg) + \
+            D_Mg = (2.0 / 3 - B_ol) / A_ol
+            NF = 7.0 * (np.log(1 - full_liquid_info['Al2O3']) / 2.0 + np.log(1 - full_liquid_info['TiO2']))
+            H, S, R = 113100, 52.05, 8.314
+            cur_T_K = (H / R) / (S / R + 2 * np.log(D_Mg) + \
                                      2 * np.log(3.0 * (full_liquid_info['FeO'] + full_liquid_info['MgO'] + \
                                                        full_liquid_info['MnO'] + full_liquid_info['CaO']) / 2) + \
                                      2 * np.log(3.0 * full_liquid_info['SiO2']) - NF)
 
-                print cur_T_K
-                A, B = 0.299, 0.027
-                Fe_volume = (2.0 * A * full_liquid_info['FeO'] / 3.0 + B * full_liquid_info['MgO'] * full_liquid_info['FeO']) / \
+            A, B = 0.299, 0.027
+            Fe_volume = (2.0 * A * full_liquid_info['FeO'] / 3.0 + B * full_liquid_info['MgO'] * full_liquid_info['FeO']) / \
                             (full_liquid_info['MgO'] + A * full_liquid_info['FeO'])
-                Mg_volume = 2.0 / 3 - Fe_volume
-                print Fe_volume, Mg_volume
-            elif olivine_melt_model == 'Putirka_AB':
-                A_Mg, B_Mg = 4490.5, 2.02
-                A_Fe, B_Fe = 3793.3, 2.66
-                cur_T_K = 273.15 + brentq(lambda x: full_liquid_info['MgO'] * np.exp(A_Mg / x - B_Mg) +
+            Mg_volume = 2.0 / 3 - Fe_volume
+        elif olivine_melt_model == 'Putirka_AB':
+            A_Mg, B_Mg = 4490.5, 2.02
+            A_Fe, B_Fe = 3793.3, 2.66
+            cur_T_K = 273.15 + brentq(lambda x: full_liquid_info['MgO'] * np.exp(A_Mg / x - B_Mg) +
                                                     full_liquid_info['FeO'] * np.exp(A_Fe / x - B_Fe) - 2.0 / 3,
                                           1, 3000, xtol=1e-16)
-                Mg_volume = full_liquid_info['MgO'] * np.exp(A_Mg / (cur_T_K - 273.15) - B_Mg)
-                Fe_volume = full_liquid_info['FeO'] * np.exp(A_Fe / (cur_T_K - 273.15) - B_Fe)
-            elif olivine_melt_model == 'Putirka_CD':
-                A_Mg, A_Fe = 3063.2, 2556.4
-                B_Mg, B_Fe = 2.106193, 3.25
-                Si_Mg, Si_Fe = 0.019, 0.028
-                NaK_Mg, NaK_Fe = 0.08, 0.052
-                cur_T_K = 273.15 + brentq(lambda x: full_liquid_info['MgO'] * np.exp(A_Mg / x - B_Mg + Si_Mg * row['SiO2'] +
+            Mg_volume = full_liquid_info['MgO'] * np.exp(A_Mg / (cur_T_K - 273.15) - B_Mg)
+            Fe_volume = full_liquid_info['FeO'] * np.exp(A_Fe / (cur_T_K - 273.15) - B_Fe)
+        elif olivine_melt_model == 'Putirka_CD':
+            A_Mg, A_Fe = 3063.2, 2556.4
+            B_Mg, B_Fe = 2.106193, 3.25
+            Si_Mg, Si_Fe = 0.019, 0.028
+            NaK_Mg, NaK_Fe = 0.08, 0.052
+            cur_T_K = 273.15 + brentq(lambda x: full_liquid_info['MgO'] * np.exp(A_Mg / x - B_Mg + Si_Mg * row['SiO2'] +
                                                                                      NaK_Mg * (row['Na2O'] + row['K2O'])) +
                                                     full_liquid_info['FeO'] * np.exp(A_Fe / x - B_Fe + Si_Fe * row['SiO2'] +
                                                                                      NaK_Fe * (row['Na2O'] + row['K2O'])) - 2.0 / 3,
                                           1, 3000, xtol=1e-16)
-                Mg_volume = full_liquid_info['MgO'] * np.exp(A_Mg / (cur_T_K - 273.15) - B_Mg + Si_Mg * row['SiO2'] +
+            Mg_volume = full_liquid_info['MgO'] * np.exp(A_Mg / (cur_T_K - 273.15) - B_Mg + Si_Mg * row['SiO2'] +
                                                                                      NaK_Mg * (row['Na2O'] + row['K2O']))
-                Fe_volume = full_liquid_info['FeO'] * np.exp(A_Fe / (cur_T_K - 273.15) - B_Fe + Si_Fe * row['SiO2'] +                                                                                 NaK_Fe * (row['Na2O'] + row['K2O']))
+            Fe_volume = full_liquid_info['FeO'] * np.exp(A_Fe / (cur_T_K - 273.15) - B_Fe + Si_Fe * row['SiO2'] +                                                                                 NaK_Fe * (row['Na2O'] + row['K2O']))
+        elif olivine_melt_model == 'Toplis':
+            if exp_T_flg:
+                cur_T_K = exp_T_list[i]
             else:
-                sys.exit('Error: olivine-melt model {} not supported'.format(olivine_melt_model))
+                cur_T_K = 1446 - 144 * full_liquid_info['SiO2'] - 50 * (full_liquid_info['FeO'] + full_liquid_info['Fe2O3']) + 1232 * full_liquid_info['MgO'] - \
+                          389.9 * full_liquid_info['CaO']
+            if exp_fug_flg:
+                fugacity = exp_fug_list[i]
+            else:
+                fugacity = compute_fugacity(cur_T_K, fugacity_delta)
+            full_liquid_info = full_liquid_info * 100
+            if full_liquid_info['SiO2'] < 60:
+                coef = (46.0 / (100.0 - full_liquid_info['SiO2']) - 0.93) * (full_liquid_info['Na2O'] + full_liquid_info['K2O']) + \
+                       (-533.0 / (100.0 - full_liquid_info['SiO2']) + 9.69)
+                print coef
+                print full_liquid_info['SiO2']
+                full_liquid_info['SiO2'] = full_liquid_info['SiO2'] + coef * (full_liquid_info['Na2O'] + full_liquid_info['K2O'])
+                print full_liquid_info['SiO2']
+            else:
+                full_liquid_info['SiO2'] = full_liquid_info['SiO2'] + (5.5 * np.exp(-0.13 * (full_liquid_info['Na2O'] + \
+                                                full_liquid_info['K2O'])) * (2.0 - 100.0 / (100.0 - full_liquid_info['SiO2'])) - 1) * \
+                                                    (full_liquid_info['Na2O'] + full_liquid_info['K2O'])
+            Fe_volume = brentq(lambda x: (0.036 * full_liquid_info['SiO2'] - 0.22) * np.exp(-(6766 + 7.34 * cur_T_K) / \
+                                            (8.314 * cur_T_K) + 3000.0 * (3 * x - 1) / (8.314 * cur_T_K)) - \
+                                             full_liquid_info['MgO'] * x / (full_liquid_info['FeO'] * (2.0 / 3 - x)),
+                                   0.001, 2.0 / 3 - 0.001, xtol=1e-16)
+            Mg_volume = 2.0 / 3 - Fe_volume
+        else:
+            sys.exit('Error: olivine-melt model {} not supported'.format(olivine_melt_model))
     # writing result for this liquid to table
     opt_T_list.append(cur_T_K - 273.15)
     if olivine_melt_model == 'Ford':
