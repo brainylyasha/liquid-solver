@@ -2,7 +2,7 @@ import subprocess
 import pandas as pd
 
 
-oxid_model_list = ['Borisov-Shapkin', 'Kilinc']
+oxid_model_list = ['Borisov-Shapkin', 'Kilinc', 'Sack']
 oliv_model_list = ['Ford', 'Roeder-Emslie', 'Herzberg', 'Beattie', 'Putirka_AB', 'Putirka_CD', 'Toplis']
 
 fugacity_list = ['NNO', 'QFM', 'WM', 'FeW']
